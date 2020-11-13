@@ -7,7 +7,7 @@ Generacion: Set de populaciones
 import random
 import sys
 
-NUM_REINAS = 8
+N_REINAS = 8
 MAX_FITNESS = 28 	# Sin posiciones invalidas en tablero 8x8 con 8 reinas
 GENERACION_LIMITE = 100000
 NUM_TABLEROS = 1000
@@ -37,57 +37,6 @@ class Tablero:
 			'fitness': fitness, 
 			'sobrevivencia': sobrevivencia
 		}
-
-def ataques_de_reinas(genotipo: list = []):
-	# calculate row and column clashes
-	# just subtract the unique length of array from total length of array
-	# [1,1,1,2,2,2] - [1,2] => 4 clashes
-	tablero_fila_columna = len(genotipo)
-	ataques_fila_columna = len(genotipo) - len(set(genotipo))
-
-
-	# calculate diagonal clashes
-	for fila_1 in range(tablero_fila_columna):
-		for fila_2 in range(tablero_fila_columna):
-			if (fila_1 != fila_2):
-				columna_1 = genotipo[fila_1]
-				columna_2 = genotipo[fila_2]
-
-				dx = abs(columna_1 - columna_2)
-				dy = abs(fila_1 - fila_2)
-
-				if(dx == dy):
-
-					ataques_diagonales += 1
-
-	return ataques_fila_columna + ataques_diagonales
-
-def fitness(genotipo: list = []):
-	"""
-	returns 28 - <number of conflicts>
-	to test for conflicts, we check for 
-	 -> row conflicts
-	 -> columnar conflicts
-	 -> diagonal conflicts
-	 
-	The ideal case can yield upton 28 arrangements of non attacking pairs.
-	for generacion 0 -> there are 7 non attacking queens
-	for generacion 1 -> there are 6 no attacking queens ..... and so on 
-
-	Therefore max fitness = 7 + 6+ 5+4 +3 +2 +1 = 28
-
-	hence fitness val returned will be 28 - <number of clashes>
-
-	"""
-	global MAX_FITNESS
-
-	posiciones_invalidas = ataques_de_reinas(genotipo)
-
-	return MAX_FITNESS - posiciones_invalidas	
-
-
-
-
 
 def get_padres(sum_fitness: float, populacion: list):
 	globals()	
@@ -183,37 +132,81 @@ def seleccion_natural(generacion: int, populacion: list):
 		
 	return nueva_populacion
 
+def expandir_byte(byte):
+	return f'{byte:b}'.zfill(8)
 
-def parar_algoritmo(populacion: list):
-	globals()
-	parar = False
+def ataques_de_reinas(genotipo: bytearray):
+	# calculate row and column clashes
+	# just subtract the unique length of array from total length of array
+	# [1,1,1,2,2,2] - [1,2] => 4 clashes
+	filas_con_reina = []
+	columnas_con_reina = []
 
-	# fitness = Maximo de posiciones invalidas (28) - posiciones invalidas en solucion
-	valores_fitness = [tablero.fitness for tablero in populacion]
+	for fila in range(N_REINAS):
+		bits_en_fila = expandir_byte(genotipo[fila])
 
-	# Maximo de posiciones invalidas en tablero 8x8 es 28
-	# Si fitness == 28, no hubieron reinas en posiciones invalidas
-	if MAX_FITNESS in valores_fitness: 
-		parar = True
-	elif GENERACION_LIMITE == generacion:
-		parar = True
+		for columna in range(N_REINAS):
+			if(bits_en_fila[columna] == '1'):
+				filas_con_reina.append(fila)
+				columnas_con_reina.append(columna)
 
-	return parar
+	ataques_horizontales = len(filas_con_reina) - len(set(filas_con_reina))
+	ataques_verticales = len(columnas_con_reina) - len(set(columnas_con_reina))
+	
+	ataques_diagonales = 0
 
-def imprimir_soluciones(populacion: list = []):
-	for tablero in populacion:
-		if tablero.fitness == MAX_FITNESS: # Sin posiciones invalidos
-			print(tablero.genotipo)
+	for i in range(N_REINAS):
+		fila_1 = filas_con_reina[i]
+		columna_1 = columnas_con_reina[i]
+
+		for j in range(i+1, N_REINAS):
+			fila_2 = filas_con_reina[j]
+			columna_2 = columnas_con_reina[j]
+
+			if fila_2 - fila_1 == abs(columna_1 - columna_2):
+				ataques_diagonales += 1
+
+	return ataques_horizontales + ataques_verticales + ataques_diagonales
+
+
+def fitness(genotipo: bytearray):
+	"""
+	returns 28 - <number of conflicts>
+	to test for conflicts, we check for 
+	 -> row conflicts
+	 -> columnar conflicts
+	 -> diagonal conflicts
+	 
+	The ideal case can yield upton 28 arrangements of non attacking pairs.
+	for generacion 0 -> there are 7 non attacking queens
+	for generacion 1 -> there are 6 no attacking queens ..... and so on 
+
+	Therefore max fitness = 7 + 6+ 5+4 +3 +2 +1 = 28
+
+	hence fitness val returned will be 28 - <number of clashes>
+
+	"""
+	global MAX_FITNESS
+
+	posiciones_invalidas = ataques_de_reinas(genotipo)
+
+	return MAX_FITNESS - posiciones_invalidas
+
+def generar_posiciones_tablero(btsr_posiciones):
+	num_bits = len(btsr_posiciones)
+	return ''.join(random.sample(list(btsr_posiciones), num_bits))
+
 
 def generar_genotipo():
-	global NUM_REINAS
-	tablero_filas = NUM_REINAS
-	tablero_columnas = NUM_REINAS
+	global N_REINAS
 
-	# indice en bytearray = fila
-	# indice de bit en byte = columna
-	# bit {0,1} = si hay o no reina en posición del tablero
-	cromosomas = bytearray([random.getrandbits(tablero_columnas) for _ in range(tablero_filas)])
+	num_filas_columnas = N_REINAS * N_REINAS
+	bstr_posicion_reina = '1' * N_REINAS
+	bstr_posicion_vacia = '0' * (num_filas_columnas - N_REINAS)
+	
+	bstr_posiciones_tablero = generar_posiciones_tablero(bstr_posicion_vacia + bstr_posicion_reina)
+
+	cromosomas: bytearray = int(bstr_posiciones_tablero, 2).to_bytes(N_REINAS, 'big')
 
 	return cromosomas
 
@@ -231,6 +224,30 @@ def generar_populacion(num_tableros: int = 100):
 	print("Tamaño de populacion: ", num_tableros)
 
 	return populacion
+
+def parar_algoritmo(populacion: list):
+	globals()
+	parar = False
+
+	# fitness = Maximo de posiciones invalidas (28) - posiciones invalidas en solucion
+	valores_fitness = [tablero.fitness for tablero in populacion]
+
+	# Maximo de posiciones invalidas en tablero 8x8 es 28
+	# Si fitness == 28, no hubieron reinas en posiciones invalidas
+	if MAX_FITNESS in valores_fitness: 
+		parar = True
+	elif GENERACION_LIMITE == generacion:
+		parar = True
+
+	return parar
+
+def imprimir_soluciones(populacion: list):
+	for tablero in populacion:
+		if tablero.fitness == MAX_FITNESS: # Sin posiciones invalidos
+			for cromosoma in tablero.genotipo:
+				print(expandir_byte(cromosoma))
+
+			print('\n')
 
 if __name__ == "__main__":
 	generacion = 0
