@@ -12,11 +12,12 @@ MAX_FITNESS = 28 	# Sin posiciones invalidas en tablero 8x8 con 8 reinas
 GENERACION_LIMITE = 100000
 NUM_TABLEROS = 1000
 BANDERA_MUTACION = True
-MUTACION = 1/NUM_TABLEROS
+CRUZAR = random.uniform(0.6, 0.9)
+MUTACION = random.uniform(1/NUM_TABLEROS, 1/N_REINAS) # p_m entre 1/pop_size y 1/chromosome_length
 
 class Tablero:
 	def __init__(self):
-		self.genotipo: bytearray = None
+		self.genotipo: bytearray = []
 		self.fitness: float = None
 		self.sobrevivencia: float = None
 
@@ -38,58 +39,10 @@ class Tablero:
 			'sobrevivencia': sobrevivencia
 		}
 
-def get_padres(sum_fitness: float, populacion: list):
-	globals()	
-	padre_1: Tablero = None
-	padre_2: Tablero = None
+def bit_flip(bit):
+	return str(abs(int(bit) - 1))
 
-	while True:
-		random_sobrevivencia = random.random()
-		random_populacion = [tablero for tablero in populacion if tablero.sobrevivencia <= random_sobrevivencia]
-
-		try:
-			padre_1 = random_populacion[0]
-			break
-		except:
-			pass
-
-	while True:
-		random_sobrevivencia = random.random()
-		random_populacion = [tablero for tablero in populacion if tablero.sobrevivencia <= random_sobrevivencia]
-
-		try:
-			random_indice = random.randrange(len(random_populacion))
-			padre_2 = random_populacion[random_indice]
-
-			if padre_2 != padre_1:
-				break
-			else:
-				#print("Padres iguales")
-				continue
-		except:
-			#print("Excepcion")
-			continue
-
-	if padre_1 is not None and padre_2 is not None:
-		return padre_1, padre_2
-	else:
-		sys.exit(-1)
-
-def cruzar(padre_1: Tablero, padre_2: Tablero):
-	globals()
-	num_cromosomas = len(padre_1.genotipo)
-	corte = random.randrange(num_cromosomas)
-
-	hijo = Tablero()
-	hijo.genotipo.extend(padre_1.genotipo[0:corte])
-	hijo.genotipo.extend(padre_2.genotipo[corte:])
-	hijo.set_fitness(fitness(hijo.genotipo))
-	hijo.set_sobrevivencia((padre_1.sobrevivencia + padre_2.sobrevivencia)/2)
-
-	return hijo
-
-
-def mutacion(hijo: Tablero):
+def mutar(hijo: Tablero):
 	"""	
 	- according to genetic theory, a mutation will take place
 	when there is an anomaly during cross over state
@@ -98,37 +51,68 @@ def mutacion(hijo: Tablero):
 	the probability of developing such a mutation 
 
 	"""
+	cromasomas = ''
+
+	for byte in hijo.genotipo:
+		bits = expandir_byte(byte)
+
+		for bit in bits:
+			cromasomas += bit if random.random() > MUTACION else bit_flip(bit)
+
+	genotipo: bytearray = bstr_to_bytearray(cromasomas)
 	
-	num_cromasomas = len(hijo.genotipo)
-	cromasoma = random.randrange(num_cromasomas)
-	hijo.genotipo[cromasoma] = random.randrange(num_cromasomas)
+	hijo.genotipo = genotipo
 
-	return hijo
+def cruzamiento_1_punto(padre_1: Tablero, padre_2: Tablero):
+	globals()
+	num_bytes = N_REINAS
+	corte = random.randrange(num_bytes)
 
-def seleccion_natural(generacion: int, populacion: list):
+	hijo_1 = Tablero()
+	hijo_1.genotipo.extend(padre_1.genotipo[0:corte])
+	hijo_1.genotipo.extend(padre_2.genotipo[corte:])
+	hijo_1.set_fitness(fitness(hijo_1.genotipo))
+
+	hijo_2 = Tablero()
+	hijo_2.genotipo.extend(padre_2.genotipo[0:corte])
+	hijo_2.genotipo.extend(padre_1.genotipo[corte:])
+	hijo_2.set_fitness(fitness(hijo_2.genotipo))
+
+	return hijo_1, hijo_2
+
+def seleccionar_padres(populacion: list):
+	return random.choices(
+		population = populacion,
+		weights = [tablero.fitness for tablero in populacion],
+		k = 2
+	)
+
+def generar_nueva_generacion(generacion: int, populacion: list):
 	globals()
 	nueva_populacion = []
 
 	# parent is decided by random probability of sobrevivencia.
 	# since the fitness of each board position is an integer >0, 
 	# we need to normaliza the fitness in order to find the solution
-	sum_fitness: float = sum([tablero.fitness for tablero in populacion])
+	#sum_fitness: float = sum([tablero.fitness for tablero in populacion])
 
-	for tablero in populacion:
-		tablero.set_sobrevivencia(tablero.fitness/sum_fitness)
+	#for tablero in populacion:
+	#	tablero.set_sobrevivencia(tablero.fitness/sum_fitness)
 
 	print(f'Ejecutando generacion genetica: {generacion}')
 
 	for _ in range(NUM_TABLEROS):
-		padre_1, padre_2 = get_padres(sum_fitness, populacion)
+		padre_1, padre_2 = seleccionar_padres(populacion)
 		# print("Padres generados : ", padre_1, padre_2)
 
-		hijo = cruzar(padre_1, padre_2)
+		hijo_1, hijo_2 = [padre_1, padre_2] if random.random() < CRUZAR else cruzamiento_1_punto(padre_1, padre_2) 
 
-		if(BANDERA_MUTACION and hijo.sobrevivencia < MUTACION):
-			hijo = mutacion(hijo)
+		if(BANDERA_MUTACION):
+			mutar(hijo_1)
+			mutar(hijo_2)
 
-		nueva_populacion.append(hijo)
+		nueva_populacion.append(hijo_1)
+		nueva_populacion.append(hijo_2)
 		
 	return nueva_populacion
 
@@ -141,30 +125,35 @@ def ataques_de_reinas(genotipo: bytearray):
 	# [1,1,1,2,2,2] - [1,2] => 4 clashes
 	filas_con_reina = []
 	columnas_con_reina = []
-
+	b = ''
 	for fila in range(N_REINAS):
 		bits_en_fila = expandir_byte(genotipo[fila])
-
+		b += bits_en_fila + ' '
 		for columna in range(N_REINAS):
 			if(bits_en_fila[columna] == '1'):
 				filas_con_reina.append(fila)
 				columnas_con_reina.append(columna)
+
+	if b.count('1') != 8:
+		print(b)
 
 	ataques_horizontales = len(filas_con_reina) - len(set(filas_con_reina))
 	ataques_verticales = len(columnas_con_reina) - len(set(columnas_con_reina))
 	
 	ataques_diagonales = 0
 
+	#print(genotipo)
 	for i in range(N_REINAS):
 		fila_1 = filas_con_reina[i]
 		columna_1 = columnas_con_reina[i]
+		
+		if i != N_REINAS-1:
+			for j in range(i+1, N_REINAS):
+				fila_2 = filas_con_reina[j]
+				columna_2 = columnas_con_reina[j]
 
-		for j in range(i+1, N_REINAS):
-			fila_2 = filas_con_reina[j]
-			columna_2 = columnas_con_reina[j]
-
-			if fila_2 - fila_1 == abs(columna_1 - columna_2):
-				ataques_diagonales += 1
+				if fila_2 - fila_1 == abs(columna_1 - columna_2):
+					ataques_diagonales += 1
 
 	return ataques_horizontales + ataques_verticales + ataques_diagonales
 
@@ -192,10 +181,16 @@ def fitness(genotipo: bytearray):
 
 	return MAX_FITNESS - posiciones_invalidas
 
-def generar_posiciones_tablero(btsr_posiciones):
-	num_bits = len(btsr_posiciones)
-	return ''.join(random.sample(list(btsr_posiciones), num_bits))
+def shuffle_bstr(num_bits, bstr):
+	return ''.join(random.sample(list(bstr), num_bits))
 
+def generar_posiciones_tablero(bstr_posiciones):
+	num_bits = len(bstr_posiciones)
+	return shuffle_bstr(num_bits, bstr_posiciones)
+
+def bstr_to_bytearray(bstr):
+	global N_REINAS
+	return int(bstr, 2).to_bytes(N_REINAS, 'big')
 
 def generar_genotipo():
 	global N_REINAS
@@ -205,9 +200,15 @@ def generar_genotipo():
 	bstr_posicion_vacia = '0' * (num_filas_columnas - N_REINAS)
 	
 	bstr_posiciones_tablero = generar_posiciones_tablero(bstr_posicion_vacia + bstr_posicion_reina)
-
-	cromosomas: bytearray = int(bstr_posiciones_tablero, 2).to_bytes(N_REINAS, 'big')
-
+	
+	if bstr_posiciones_tablero.count('1') != 8:
+		print(bstr_posiciones_tablero)
+	cromosomas: bytearray = bstr_to_bytearray(bstr_posiciones_tablero)
+	b=''
+	for c in cromosomas:
+		b += expandir_byte(c) + ' '
+	if b.count('1') != 8:
+		print(b)
 	return cromosomas
 
 def generar_populacion(num_tableros: int = 100):
@@ -254,7 +255,7 @@ if __name__ == "__main__":
 	populacion = generar_populacion(NUM_TABLEROS) 	# Lista de objetos Tablero
 
 	while not parar_algoritmo(populacion):
-		populacion = seleccion_natural(generacion, populacion)
+		populacion = generar_nueva_generacion(generacion, populacion)
 		generacion += 1 
 
 	print("# de generacion: ", generacion)
