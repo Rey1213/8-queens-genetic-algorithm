@@ -8,7 +8,7 @@ import random
 import sys
 
 N_REINAS = 8
-MAX_POSICIONES_INVALIDAS = 28
+TABLERO_INVALIDO = 28 # Tablero invalido da fitness = 0
 MAX_FITNESS = 28 	# Sin posiciones invalidas en tablero 8x8 con 8 reinas
 GENERACION_LIMITE = 100000
 NUM_TABLEROS = 1000
@@ -140,45 +140,46 @@ def bstr_to_bytearray(bstr):
 def expandir_byte(byte):
 	return f'{byte:b}'.zfill(8)
 
+def expandir_posicion(byte_posicion):
+	bstr_posicion = expandir_byte(byte_posicion).zfill(8)
+	fila = int(bstr_posicion[:4], 2)
+	columna = int(bstr_posicion[4:], 2)
+	
+	return fila, columna
+
 def ataques_de_reinas(genotipo: bytearray):
 	# calculate row and column clashes
 	# just subtract the unique length of array from total length of array
 	# [1,1,1,2,2,2] - [1,2] => 4 clashes
-	filas_con_reina = []
-	columnas_con_reina = []
-	reinas_en_tablero = 0
-
-	for fila in range(N_REINAS):
-		bits_en_fila = expandir_byte(genotipo[fila])
-		
-		for columna in range(N_REINAS):
-			if(bits_en_fila[columna] == '1'):
-				filas_con_reina.append(fila)
-				columnas_con_reina.append(columna)
-				reinas_en_tablero += 1
-
-	if reinas_en_tablero != N_REINAS: # Si hay mutacion en genotipo
-		return MAX_POSICIONES_INVALIDAS
-
-	ataques_horizontales = len(filas_con_reina) - len(set(filas_con_reina))
-	ataques_verticales = len(columnas_con_reina) - len(set(columnas_con_reina))
+	posiciones_reina: list[tuple] = []
 	
+	for posicion_byte in genotipo:
+		posicion = expandir_posicion(posicion_byte)
+
+		if posicion in posiciones_reina:
+			return TABLERO_INVALIDO
+		
+		posiciones_reina.append(posicion)
+
+	ataques_horizontales = N_REINAS - len(set([columna for _, columna in posiciones_reina]))
+	ataques_verticales = N_REINAS - len(set([fila for fila, _ in posiciones_reina]))
+
 	ataques_diagonales = 0
 
 	for i in range(N_REINAS-1): # n-1 porque ultima posicion no se compara con otra posicion
-		fila_1 = filas_con_reina[i]
-		columna_1 = columnas_con_reina[i]
+		fila_1, columna_1 = posiciones_reina[i]
 	
 		for j in range(i+1, N_REINAS):
-			fila_2 = filas_con_reina[j]
-			columna_2 = columnas_con_reina[j]
+			fila_2, columna_2 = posiciones_reina[j]
 
 			if fila_2 - fila_1 == abs(columna_1 - columna_2):
 				ataques_diagonales += 1
-	print(filas_con_reina)
-	print(columnas_con_reina)
+	
+	print(posiciones_reina)
+
 	if ataques_horizontales + ataques_verticales + ataques_diagonales == 0:
 		print('max')
+	
 	return ataques_horizontales + ataques_verticales + ataques_diagonales
 
 
@@ -209,40 +210,26 @@ def int_to_bstr(entero: int):
 	return f'{bin(entero):b}'
 
 def generar_nibble_bstr():
-	return int_to_bstr(random.randrange(0, N_REINAS))
+	return int_to_bstr(random.randrange(0, N_REINAS)).zfill(4)
 
-def posicion_int(posicion: tuple = None):
-	bstr_fila = ''
-	bstr_columna = ''
-
-	if posicion == None:
-		bstr_fila = generar_nibble_bstr()
-		bstr_columna = generar_nibble_bstr()
-	else:
-		bstr_fila = int_to_bstr(posicion[0]).zfill(4)
-		bstr_columna = int_to_bstr(posicion[1]).zfill(4)
+def generar_posicion_int(posicion: tuple = None):
+	bstr_fila = generar_nibble_bstr()
+	bstr_columna = generar_nibble_bstr()
 	
 	return int(bstr_fila + bstr_columna, 2)
 
-def generar_posicion():
-	fila = random.randrange(0, N_REINAS)
-	columna = random.randrange(0, N_REINAS)
-
-	return fila, columna
-
-
 def generar_posiciones_bytearray(num_posiciones: int):
-	posiciones: list[tuple] = []
+	posiciones: list[int] = []
 	p = 1
 
 	while(p <= num_posiciones):
-		posicion = generar_posicion()
+		posicion_int = generar_posicion_int()
 
-		if posicion not in posiciones:
-			posiciones.append(posicion)
+		if posicion_int not in posiciones:
+			posiciones.append(posicion_int)
 			p += 1
 
-	return bytearray([posicion_int(posicion) for posicion in posiciones])
+	return bytearray(posiciones)
 
 def generar_genotipo():
 	global N_REINAS
@@ -265,14 +252,6 @@ def generar_populacion(num_tableros: int = 100):
 	print("Tamaño de populacion: ", num_tableros)
 
 	return populacion
-
-
-def expandir_posicion(byte_posicion):
-	bstr_posicion = expandir_byte(byte_posicion).zfill(8)
-	fila = int(bstr_posicion[:4], 2)
-	columna = int(bstr_posicion[4:], 2)
-	
-	return fila, columna
 
 def imprimir_solucion(genotipo: bytearray):
 	for byte_posicion in genotipo:
