@@ -130,6 +130,13 @@ def generar_nueva_generacion(generacion: int, populacion: list):
 		
 	return nueva_populacion
 
+def shuffle_bstr(num_bits, bstr):
+	return ''.join(random.sample(list(bstr), num_bits))
+
+def bstr_to_bytearray(bstr):
+	global N_REINAS
+	return int(bstr, 2).to_bytes(N_REINAS, 'big')
+
 def expandir_byte(byte):
 	return f'{byte:b}'.zfill(8)
 
@@ -198,29 +205,51 @@ def fitness(genotipo: bytearray):
 
 	return MAX_FITNESS - posiciones_invalidas
 
-def shuffle_bstr(num_bits, bstr):
-	return ''.join(random.sample(list(bstr), num_bits))
+def int_to_bstr(entero: int):
+	return f'{bin(entero):b}'
 
-def generar_posiciones_tablero(bstr_posiciones):
-	num_bits = len(bstr_posiciones)
-	return shuffle_bstr(num_bits, bstr_posiciones)
+def generar_nibble_bstr():
+	return int_to_bstr(random.randrange(0, N_REINAS))
 
-def bstr_to_bytearray(bstr):
-	global N_REINAS
-	return int(bstr, 2).to_bytes(N_REINAS, 'big')
+def posicion_int(posicion: tuple = None):
+	bstr_fila = ''
+	bstr_columna = ''
+
+	if posicion == None:
+		bstr_fila = generar_nibble_bstr()
+		bstr_columna = generar_nibble_bstr()
+	else:
+		bstr_fila = int_to_bstr(posicion[0]).zfill(4)
+		bstr_columna = int_to_bstr(posicion[1]).zfill(4)
+	
+	return int(bstr_fila + bstr_columna, 2)
+
+def generar_posicion():
+	fila = random.randrange(0, N_REINAS)
+	columna = random.randrange(0, N_REINAS)
+
+	return fila, columna
+
+
+def generar_posiciones_bytearray(num_posiciones: int):
+	posiciones: list[tuple] = []
+	p = 1
+
+	while(p <= num_posiciones):
+		posicion = generar_posicion()
+
+		if posicion not in posiciones:
+			posiciones.append(posicion)
+			p += 1
+
+	return bytearray([posicion_int(posicion) for posicion in posiciones])
 
 def generar_genotipo():
 	global N_REINAS
 
-	num_filas_columnas = N_REINAS * N_REINAS
-	bstr_posicion_reina = '1' * N_REINAS
-	bstr_posicion_vacia = '0' * (num_filas_columnas - N_REINAS)
+	posiciones_reina: bytearray = generar_posiciones_bytearray(N_REINAS)
 	
-	bstr_posiciones_tablero = generar_posiciones_tablero(bstr_posicion_vacia + bstr_posicion_reina)
-	
-	cromosomas: bytearray = bstr_to_bytearray(bstr_posiciones_tablero)
-	
-	return cromosomas
+	return posiciones_reina
 
 def generar_populacion(num_tableros: int = 100):
 	'''
@@ -237,6 +266,23 @@ def generar_populacion(num_tableros: int = 100):
 
 	return populacion
 
+
+def expandir_posicion(byte_posicion):
+	bstr_posicion = expandir_byte(byte_posicion).zfill(8)
+	fila = int(bstr_posicion[:4], 2)
+	columna = int(bstr_posicion[4:], 2)
+	
+	return fila, columna
+
+def imprimir_solucion(genotipo: bytearray):
+	for byte_posicion in genotipo:
+		tablero_fila = '0' * N_REINAS
+		_, columna = expandir_posicion(byte_posicion)
+		
+		tablero_fila[columna] = '1'
+		
+		print(' '.join(tablero_fila), '\n')
+
 def parar_algoritmo(populacion: list):
 	globals()
 	parar = False
@@ -246,25 +292,18 @@ def parar_algoritmo(populacion: list):
 
 	# Maximo de posiciones invalidas en tablero 8x8 es 28
 	# Si fitness == 28, no hubieron reinas en posiciones invalidas
-	if MAX_FITNESS in valores_fitness: 
-		parar = True
-	else:
-		print(max(valores_fitness))
+	for tablero in populacion:
+		if tablero.fitness == MAX_FITNESS: 
+			imprimir_solucion(tablero.genotipo)
+			parar = True
+			break
+		else:
+			print(max(valores_fitness))
 	
 	if GENERACION_LIMITE == generacion:
 		parar = True
 
 	return parar
-
-def imprimir_soluciones(populacion: list):
-	for tablero in populacion:
-		if tablero.fitness == MAX_FITNESS: # Sin posiciones invalidos
-			print(tablero.genotipo)
-
-			for cromosoma in tablero.genotipo:
-				print(expandir_byte(cromosoma))
-
-			print('\n')
 
 if __name__ == "__main__":
 	generacion = 0
