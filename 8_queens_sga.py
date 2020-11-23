@@ -35,12 +35,12 @@ class Tablero:
 			'fitness': fitness
 		}
 
-def expandir_posicion(byte_posicion, tipo="bstr"):
+def expandir_posicion(byte_posicion, tipo):
 	bstr_posicion = expandir_byte(byte_posicion)
 	fila = bstr_posicion[0:4]
 	columna = bstr_posicion[4:]
 
-	if tipo == "int":
+	if tipo == 'int':
 		return int(fila, 2), int(columna, 2)
 	
 	return fila, columna
@@ -173,13 +173,7 @@ def ataques_de_reinas(genotipo: bytearray):
 			if abs(fila_1 - fila_2) == abs(columna_1 - columna_2):
 				ataques_diagonales += 1
 	
-	print(posiciones_reina)
-
-	if ataques_horizontales + ataques_verticales + ataques_diagonales == 0:
-		print('max')
-	
 	return ataques_horizontales + ataques_verticales + ataques_diagonales
-
 
 def fitness(genotipo: bytearray):
 	"""
@@ -252,46 +246,51 @@ def generar_populacion(num_tableros: int = 100):
 	return populacion
 
 def imprimir_solucion(genotipo: bytearray):
-	tablero = [-1] * N_REINAS
+	tablero = [0] * N_REINAS
 
 	for byte_posicion in genotipo:
-		fila, columna = expandir_posicion(byte_posicion, "int/")	
+		fila, columna = expandir_posicion(byte_posicion, "int")	
 		tablero[fila] = columna
 		
 	print(tablero, '\n')
 
 	for fila in range(N_REINAS):
-		bstr_fila = '0' * N_REINAS
+		tablero_fila = ['0'] * N_REINAS
 		columna = tablero[fila]
-		bstr_fila[columna] = '1'
+		tablero_fila[columna] = '1'
 		
-		print(' '.join(bstr_fila), '\n')
+		print(' '.join(tablero_fila), '\n')
 
 def parar_algoritmo(populacion: list):
 	globals()
 	parar = False
+	indice_max_fitness: int = None
 
 	# fitness = Maximo de posiciones invalidas (28) - posiciones invalidas en solucion
-	valores_fitness = [tablero.fitness for tablero in populacion]
-
 	# Maximo de posiciones invalidas en tablero 8x8 es 28
 	# Si fitness == 28, no hubieron reinas en posiciones invalidas
-	for tablero in populacion:
-		if tablero.fitness == MAX_FITNESS: 
-			imprimir_solucion(tablero.genotipo)
-			parar = True
-			break
-		else:
-			print(max(valores_fitness))
-	
-	if GENERACION_LIMITE == generacion:
+	# 
+	valores_fitness = [tablero.fitness for tablero in populacion]	
+
+	try:
+		indice_max_fitness = valores_fitness.index(MAX_FITNESS)
+
+		tablero_solucion = populacion[indice_max_fitness].genotipo
+		imprimir_solucion(tablero_solucion)
 		parar = True
+
+	except ValueError:
+		print(max(valores_fitness))
+		if GENERACION_LIMITE == generacion:
+			parar = True
 
 	return parar
 
 if __name__ == "__main__":
 	generacion = 0
 	populacion = generar_populacion(NUM_TABLEROS) 	# Lista de objetos Tablero
+
+	print(f'Ejecutando generacion genetica: {generacion}')
 
 	while not parar_algoritmo(populacion):
 		populacion = generar_nueva_generacion(generacion, populacion)
