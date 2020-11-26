@@ -1,20 +1,16 @@
-"""
-Populacion: Lista de genomas
-Generacion: Set de populaciones
-
-"""
-
-import random
+from random import random, randrange, uniform, choices, sample
 import sys
 
-N_REINAS = 8
+N_REINAS = 8 # Numero de reinas
 TABLERO_INVALIDO = 28 # Tablero invalido da fitness = 0
 MAX_FITNESS = 28 	# Sin posiciones invalidas en tablero 8x8 con 8 reinas
 GENERACION_LIMITE = 100000
-NUM_TABLEROS = 1000
-BANDERA_MUTACION = True
-CRUZAR = random.uniform(0.6, 0.9) # p_c entre 0.6 y 0.9
-MUTACION = random.uniform(1/NUM_TABLEROS, 1/(N_REINAS*N_REINAS)) # p_m entre 1/pop_size y 1/chromosome_length
+NUM_TABLEROS = 1000 # Tamaño de poblacion
+BANDERA_MUTACION = True # Si permitir mutacion o no
+CRUZAR = uniform(0.6, 0.9) # probabilidad de cruzamiento entre 0.6 y 0.9
+MUTACION = uniform(
+	1/NUM_TABLEROS, 1/(N_REINAS*N_REINAS)
+) # probabilidad de mutacion entre 1/population_size y 1/chromosome_length
 
 class Tablero:
 	def __init__(self):
@@ -22,28 +18,33 @@ class Tablero:
 		self.fitness: int = 0
 	
 	# Secuencia de cromosomas / genotipo / posible solucion
+	# 64 bits / 16 nibbles / 8 bytes
 	def set_genotipo(self, genotipo: bytearray):
 		self.genotipo = genotipo
 
-	# fitness == 28, no hay posiciones invalidas
+	# fitness == 28, no hay ataques de reina
+	# fitness == 0, tablero invalido por mutacion
 	def set_fitness(self, fitness: int):
 		self.fitness = fitness
 
-	def get_tablero(self):
-		return {
-			'genotipo': genotipo, 
-			'fitness': fitness
-		}
+def expandir_posicion(byte_posicion, tipo: str):
+	'''
+	Obtener posicion de una reina en el tablero expandiendo un byte del genotipo
 
-def expandir_posicion(byte_posicion, tipo):
+	Primeros 4 bits = fila, Ultimos 4 bits = columna
+
+	Parameters:
+		byte_posicion(): byte de posicion
+		tipo(str): devolver posicion como tuple de enteros o cadena binaria
+	'''
 	bstr_posicion = expandir_byte(byte_posicion)
-	fila = bstr_posicion[0:4]
-	columna = bstr_posicion[4:]
+	bstr_fila = bstr_posicion[0:4]
+	bstr_columna = bstr_posicion[4:]
 
 	if tipo == 'int':
-		return int(fila, 2), int(columna, 2)
+		return int(bstr_fila, 2), int(bstr_columna, 2)
 	
-	return fila, columna
+	return bstr_fila, bstr_columna
 
 
 def mutar(hijo: Tablero):
@@ -60,11 +61,11 @@ def mutar(hijo: Tablero):
 	for posicion_byte in hijo.genotipo:
 		bstr_fila, bstr_columna = expandir_posicion(posicion_byte, "bstr")
 
-		cromasomas += bstr_fila if random.random() > MUTACION else generar_nibble_bstr()
+		cromasomas += bstr_fila if random() > MUTACION else generar_nibble_bstr()
 
-		cromasomas += bstr_columna if random.random() > MUTACION else generar_nibble_bstr()
+		cromasomas += bstr_columna if random() > MUTACION else generar_nibble_bstr()
 
-	genotipo: bytearray = bstr_to_bytearray(cromasomas)
+	genotipo: bytearray = bstr_to_bytes(cromasomas)
 	
 	hijo.genotipo = genotipo
 
@@ -74,17 +75,17 @@ def bytearray_to_bstr(bytearray):
 def cruzamiento_1_punto(padre_1: Tablero, padre_2: Tablero):
 	globals()
 	num_nibbles = N_REINAS * 2
-	corte = random.randrange(1, num_nibbles) * 4
+	corte = randrange(1, num_nibbles) * 4
 
 	bstr_genotipo_p1 = bytearray_to_bstr(padre_1.genotipo)
 	bstr_genotipo_p2 = bytearray_to_bstr(padre_2.genotipo)
 
-	hijo_1_genotipo = bstr_to_bytearray(
+	hijo_1_genotipo = bstr_to_bytes(
 		bstr_genotipo_p1[0:corte] +
 		bstr_genotipo_p2[corte:]
 	)
 
-	hijo_2_genotipo = bstr_to_bytearray(
+	hijo_2_genotipo = bstr_to_bytes(
 		bstr_genotipo_p2[0:corte] +
 		bstr_genotipo_p1[corte:]
 	)
@@ -100,7 +101,7 @@ def cruzamiento_1_punto(padre_1: Tablero, padre_2: Tablero):
 	return hijo_1, hijo_2
 
 def seleccionar_padres(populacion: list):
-	return random.choices(
+	return choices(
 		population = populacion,
 		weights = [tablero.fitness for tablero in populacion],
 		k = 2
@@ -124,7 +125,7 @@ def generar_nueva_generacion(generacion: int, populacion: list):
 		padre_1, padre_2 = seleccionar_padres(populacion)
 		# print("Padres generados : ", padre_1, padre_2)
 
-		hijo_1, hijo_2 = [padre_1, padre_2] if random.random() < CRUZAR else cruzamiento_1_punto(padre_1, padre_2) 
+		hijo_1, hijo_2 = [padre_1, padre_2] if random() < CRUZAR else cruzamiento_1_punto(padre_1, padre_2) 
 
 		if(BANDERA_MUTACION):
 			mutar(hijo_1)
@@ -136,10 +137,14 @@ def generar_nueva_generacion(generacion: int, populacion: list):
 	return nueva_populacion
 
 def shuffle_bstr(num_bits, bstr):
-	return ''.join(random.sample(list(bstr), num_bits))
+	return ''.join(sample(list(bstr), num_bits))
 
-def bstr_to_bytearray(bstr):
-	global N_REINAS
+def bstr_to_bytes(bstr: str):
+	'''
+	Convierte una cadena binaria a un arreglo de 8 bytes
+	
+	Cada indice contiene 8 bits (una posicion de reina)
+	'''
 	return int(bstr, 2).to_bytes(N_REINAS, 'big')
 
 def expandir_byte(byte):
@@ -202,7 +207,7 @@ def int_to_bstr(entero: int):
 	return f'{entero:b}'
 
 def generar_nibble_bstr():
-	return int_to_bstr(random.randrange(0, N_REINAS)).zfill(4)
+	return int_to_bstr(randrange(0, N_REINAS)).zfill(4)
 
 def generar_posicion_int(posicion: tuple = None):
 	bstr_fila = generar_nibble_bstr()
@@ -261,7 +266,7 @@ def imprimir_solucion(genotipo: bytearray):
 		
 		print(' '.join(tablero_fila), '\n')
 
-def parar_algoritmo(populacion: list):
+def parar_algoritmo(populacion: list, generacion: int):
 	globals()
 	parar = False
 	indice_max_fitness: int = None
@@ -280,9 +285,9 @@ def parar_algoritmo(populacion: list):
 		parar = True
 
 	except ValueError:
-		print(max(valores_fitness))
 		if GENERACION_LIMITE == generacion:
 			parar = True
+			print(f'Valor maximo de fitness fue: {max(valores_fitness)}')	
 
 	return parar
 
@@ -292,6 +297,6 @@ if __name__ == "__main__":
 
 	print(f'Ejecutando generacion genetica: {generacion}')
 
-	while not parar_algoritmo(populacion):
+	while not parar_algoritmo(populacion, generacion):
 		populacion = generar_nueva_generacion(generacion, populacion)
 		generacion += 1 
