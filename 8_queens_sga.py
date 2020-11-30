@@ -1,95 +1,139 @@
-from random import random, randrange, uniform, choices, sample
-import sys
+from random import random, randrange, uniform, choices, shuffle
 
 N_REINAS = 8 # Numero de reinas
 TABLERO_INVALIDO = 28 # Tablero invalido da fitness = 0
 MAX_FITNESS = 28 	# Sin posiciones invalidas en tablero 8x8 con 8 reinas
-GENERACION_LIMITE = 100000
+GENERACION_LIMITE = 100000 # Parar si llega a esta generación sin encontrar solucion
 NUM_TABLEROS = 1000 # Tamaño de poblacion
 BANDERA_MUTACION = True # Si permitir mutacion o no
 CRUZAR = uniform(0.6, 0.9) # probabilidad de cruzamiento entre 0.6 y 0.9
 MUTACION = uniform(
 	1/NUM_TABLEROS, 1/(N_REINAS*N_REINAS)
-) # probabilidad de mutacion entre 1/population_size y 1/chromosome_length
+) # probabilidad de mutacion entre 1/population_size y 1/chromosomes_length
+
 
 class Tablero:
 	def __init__(self):
 		self.genotipo: bytearray = []
 		self.fitness: int = 0
 	
-	# Secuencia de cromosomas / genotipo / posible solucion
-	# 64 bits / 16 nibbles / 8 bytes
 	def set_genotipo(self, genotipo: bytearray):
+		"""
+		Secuencia de cromosomas / genotipo / posible solucion
+		
+		64 bits / 16 nibbles / 8 bytes
+		"""
 		self.genotipo = genotipo
 
-	# fitness == 28, no hay ataques de reina
-	# fitness == 0, tablero invalido por mutacion
 	def set_fitness(self, fitness: int):
+		"""
+		fitness == 28, no hay ataques de reina
+		
+		fitness == 0, tablero invalido por mutacion
+		"""
 		self.fitness = fitness
 
-def expandir_posicion(byte_posicion, tipo: str):
+
+def byte_to_position(byte: int, tipo: str = 'bstr'):
 	'''
 	Obtener posicion de una reina en el tablero expandiendo un byte del genotipo
 
 	Primeros 4 bits = fila, Ultimos 4 bits = columna
 
 	Parameters:
-		byte_posicion(): byte de posicion
+		byte(int): byte de posicion
 		tipo(str): devolver posicion como tuple de enteros o cadena binaria
+	
+	Returns:
+		posicion (fila, columna) de reina en un tablero
+
+		tuple de enteros si tipo == 'int'
+		tuple de cadenas binarias si tipo != 'int'
 	'''
-	bstr_posicion = expandir_byte(byte_posicion)
+	bstr_posicion = int_to_bstr(byte, 8) # cadena binaria de longitud 8
 	bstr_fila = bstr_posicion[0:4]
 	bstr_columna = bstr_posicion[4:]
 
-	if tipo == 'int':
+	if tipo == 'int': # tuple de enteros
 		return int(bstr_fila, 2), int(bstr_columna, 2)
 	
-	return bstr_fila, bstr_columna
+	return bstr_fila, bstr_columna # tuple de cadenas binarias
 
 
-def mutar(hijo: Tablero):
+def mutar(tablero: Tablero):
 	"""	
-	- according to genetic theory, a mutation will take place
-	when there is an anomaly during cross over state
+	Mutar cromosomas del genotipo (64 bits / 8 bytes) de un tablero al azar
 
-	- since a computer cannot determine such anomaly, we can define 
-	the probability of developing such a mutation 
+	Cada byte del genotipo representa una posicion de reina en el tablero
 
+	Primeros 4 bits = fila, Ultimos 4 bits = columna
+
+	Parameters:
+		hijo(Tablero): tablero con 8 reinas
 	"""
-	cromasomas = ''
+	cromasomas = '' # para almacenar cromosomas de genotipo
 
-	for posicion_byte in hijo.genotipo:
-		bstr_fila, bstr_columna = expandir_posicion(posicion_byte, "bstr")
+	for byte in tablero.genotipo:
+		# Obtener posición (fila, columna) de una reina como cadenas binarias
+		bstr_fila, bstr_columna = byte_to_position(byte, "bstr")
 
+		# Decidir si mutar fila de reina al azar
 		cromasomas += bstr_fila if random() > MUTACION else generar_nibble_bstr()
-
+		# Decidir si mutar columna de reina al azar
 		cromasomas += bstr_columna if random() > MUTACION else generar_nibble_bstr()
 
-	genotipo: bytearray = bstr_to_bytes(cromasomas)
+	# Convertir representation de genotipo de cadena binaria a arreglo de bytes
+	genotipo: bytearray = bstr_to_bytearray(cromasomas, N_REINAS)
 	
-	hijo.genotipo = genotipo
+	# Asignar nuevo genotipo de tablero
+	tablero.genotipo = genotipo
 
-def bytearray_to_bstr(bytearray):
-	return ''.join([expandir_byte(byte) for byte in bytearray])
+
+def bytearray_to_bstr(byte_array: bytearray, num_bytes: int):
+	"""
+	Convertir bytearray (64 bits / 8 bytes) a cadena binaria
+	
+	Parameters:
+		byte_array(bytearray): arreglo de bytes - posiciones de reinas 
+		num_bytes(int): numero de posiciones de reinas
+
+	Returns:
+		cadena binario - posiciones de reinas
+	"""
+	return ''.join([int_to_bstr(byte, num_bytes) for byte in byte_array])
+
 
 def cruzamiento_1_punto(padre_1: Tablero, padre_2: Tablero):
-	globals()
-	num_nibbles = N_REINAS * 2
-	corte = randrange(1, num_nibbles) * 4
+	"""
+	Cruzar el genotipo de 2 tableros para generar 2 tableros nuevos
 
-	bstr_genotipo_p1 = bytearray_to_bstr(padre_1.genotipo)
-	bstr_genotipo_p2 = bytearray_to_bstr(padre_2.genotipo)
+	Corte de cruzamiento es cada 4to bit porque cada 4 bits representan
+	una fila o columna de una posición de reina
 
-	hijo_1_genotipo = bstr_to_bytes(
-		bstr_genotipo_p1[0:corte] +
-		bstr_genotipo_p2[corte:]
-	)
+	Arguements:
+		padre_1(Tablero): tablero
+		padre_2(Tablero): tablero
 
-	hijo_2_genotipo = bstr_to_bytes(
-		bstr_genotipo_p2[0:corte] +
-		bstr_genotipo_p1[corte:]
-	)
+	Returns:
+		Tuple de tableros generados por cruzamiento
+	"""
+	num_nibbles = N_REINAS * 2 # 16 nibbles == 8 bytes
+	corte = randrange(1, num_nibbles) * 4 # corte de genotipo cada 4to bit
 
+	# obtener genotipo como cadena binaria
+	bstr_genotipo_p1 = bytearray_to_bstr(padre_1.genotipo, N_REINAS)
+	bstr_genotipo_p2 = bytearray_to_bstr(padre_2.genotipo, N_REINAS)
+
+	# obtener genotipo de cruzamiento como cadena binaria
+	bstr_genotipo_h1 = bstr_genotipo_p1[0:corte] + bstr_genotipo_p2[corte:]
+	bstr_genotipo_h2 = bstr_genotipo_p2[0:corte] + bstr_genotipo_p1[corte:]
+	
+	# obtener genotipo como arreglo de bytes del cruzamiento
+	# se alterna orden de los genotipos cruzados
+	hijo_1_genotipo = bstr_to_bytearray(bstr_genotipo_h1, N_REINAS)
+	hijo_2_genotipo = bstr_to_bytearray(bstr_genotipo_h2, N_REINAS)
+
+	# Crear tableros usando genotipos del cruzamiento
 	hijo_1 = Tablero()
 	hijo_1.set_genotipo(hijo_1_genotipo)
 	hijo_1.set_fitness(fitness(hijo_1.genotipo))
@@ -100,196 +144,284 @@ def cruzamiento_1_punto(padre_1: Tablero, padre_2: Tablero):
 
 	return hijo_1, hijo_2
 
+
 def seleccionar_padres(populacion: list):
+	"""
+	Se seleccionan 2 tableros de una lista al azar dependiendo de su fitness
+
+	Tablero tiene mas probabilidad de ser seleccionado si tiene buen fitness
+
+	Arguments:
+		populacion(list): lista de tableros
+
+	Returns:
+		lista con 2 tableros seleccionados de la lista al azar
+	"""
 	return choices(
 		population = populacion,
 		weights = [tablero.fitness for tablero in populacion],
 		k = 2
 	)
 
+
 def generar_nueva_generacion(generacion: int, populacion: list):
-	globals()
+	"""
+	Generar nueva lista de tableros realizando cruzamientos y mutaciones
+	de los genotipos de los tableros antiguos (pasada generación)
+
+	Arguements:
+		generacion(int): número de generación
+		populacion(list): lista de tableros
+
+	Returns:
+		Lista de tableros
+	"""
 	nueva_populacion = []
-
-	# parent is decided by random probability of sobrevivencia.
-	# since the fitness of each board position is an integer >0, 
-	# we need to normaliza the fitness in order to find the solution
-	#sum_fitness: int = sum([tablero.fitness for tablero in populacion])
-
-	#for tablero in populacion:
-	#	tablero.set_sobrevivencia(tablero.fitness/sum_fitness)
 
 	print(f'Ejecutando generacion genetica: {generacion}')
 
-	for _ in range(int(NUM_TABLEROS/2)):
-		padre_1, padre_2 = seleccionar_padres(populacion)
-		# print("Padres generados : ", padre_1, padre_2)
+	for _ in range(int(NUM_TABLEROS/2)): # Dividir por 2 porque se generan 2 tableros a la vez
+		padre_1, padre_2 = seleccionar_padres(populacion) # Seleccionar 2 tableros al azar
 
+		# Usar tableros seleccionados o cruzarlos para generar 2 nuevos tableros al azar
 		hijo_1, hijo_2 = [padre_1, padre_2] if random() < CRUZAR else cruzamiento_1_punto(padre_1, padre_2) 
 
-		if(BANDERA_MUTACION):
+		if(BANDERA_MUTACION): # Si se permiten mutaciones, mutar tableros
 			mutar(hijo_1)
 			mutar(hijo_2)
 
+		# Almacenar tableros para nueva generación
 		nueva_populacion.append(hijo_1)
 		nueva_populacion.append(hijo_2)
-		
-	return nueva_populacion
 
-def shuffle_bstr(num_bits, bstr):
-	return ''.join(sample(list(bstr), num_bits))
+	shuffle(nueva_populacion)
 
-def bstr_to_bytes(bstr: str):
+	return nueva_populacion # retornar nueva lista de tableros
+
+
+def bstr_to_bytearray(bstr: str, num_bytes: int):
 	'''
 	Convierte una cadena binaria a un arreglo de 8 bytes
 	
 	Cada indice contiene 8 bits (una posicion de reina)
-	'''
-	return int(bstr, 2).to_bytes(N_REINAS, 'big')
+	
+	Parameters:	
+		bstr(str): cadena binario - posiciones de reinas
+		num_bytes(int): numero de posiciones de reinas
 
-def expandir_byte(byte):
-	return f'{byte:b}'.zfill(8)
+	Returns:
+		arreglo de bytes - posiciones de reinas 
+	'''
+	return int(bstr, 2).to_bytes(num_bytes, 'big')
+
 
 def ataques_de_reinas(genotipo: bytearray):
-	# calculate row and column clashes
-	# just subtract the unique length of array from total length of array
-	# [1,1,1,2,2,2] - [1,2] => 4 clashes
+	"""
+	Consigue numero de ataques de reina en un tablero dado
+
+	Arguments:
+		genotipo(bytearray): posiciones de reina representados por bytes
+
+	Returns:
+		numero de ataques de reina
+	"""
+	# posiciones (fila, columna)
 	posiciones_reina: list[tuple] = []
 	
-	for posicion_byte in genotipo:
-		posicion = expandir_posicion(posicion_byte, "int")
+	for byte in genotipo: # cada byte de genotipo es una posicion
+		# Obtener posicion (fila, columna) de una reina
+		posicion = byte_to_position(byte, "int")
 
+		# si posicion se repite, hubo mutacion que genero un tablero invalido
 		if posicion in posiciones_reina:
-			return TABLERO_INVALIDO
+			return TABLERO_INVALIDO # retorna 28, da fitness de 0 (28-28)
 		
-		posiciones_reina.append(posicion)
+		posiciones_reina.append(posicion) # poner tuple de posicion de reina en lista
 
+	# set dara longitud de 8 si no se repiten columnas
 	ataques_horizontales = N_REINAS - len(set([columna for _, columna in posiciones_reina]))
+	# set dara longitud de 8 si no se repiten filas
 	ataques_verticales = N_REINAS - len(set([fila for fila, _ in posiciones_reina]))
 
 	ataques_diagonales = 0
 
 	for i in range(N_REINAS-1): # n-1 porque ultima posicion no se compara con otra posicion
-		fila_1, columna_1 = posiciones_reina[i]
+		fila_i, columna_i = posiciones_reina[i]
 	
-		for j in range(i+1, N_REINAS):
-			fila_2, columna_2 = posiciones_reina[j]
+		for j in range(i+1, N_REINAS): # i+1 para no repetir ataques (1,1 -> 2,2 y 2,2 -> 1,1)
+			fila_j, columna_j = posiciones_reina[j]
 
-			if abs(fila_1 - fila_2) == abs(columna_1 - columna_2):
+			# si dx == dy, reinas pueden atacar diagonalmente
+			if abs(fila_i - fila_j) == abs(columna_i - columna_j):
 				ataques_diagonales += 1
 	
 	return ataques_horizontales + ataques_verticales + ataques_diagonales
 
+
 def fitness(genotipo: bytearray):
 	"""
-	returns 28 - <number of conflicts>
-	to test for conflicts, we check for 
-	 -> row conflicts
-	 -> columnar conflicts
-	 -> diagonal conflicts
+	Revisar que cerca esta un tablero a ser una solución al problema de 8 reinas
+
+	fitness == 28, un tablero sin posibles ataques de reina
+	fitness == 0, un tablero invalido por causa de mutación 
+
+	Se revisan ataques de reina: fila, columna, diagonal
 	 
-	The ideal case can yield upton 28 arrangements of non attacking pairs.
-	for generacion 0 -> there are 7 non attacking queens
-	for generacion 1 -> there are 6 no attacking queens ..... and so on 
+	Max fitness es 28 porque en peor de los casos todas las reinas se atacan:
+	7 + 6 + 5 + 4 + 3 + 2 + 1 = 28
 
-	Therefore max fitness = 7 + 6+ 5+4 +3 +2 +1 = 28
+	Arguements:
+		genotipo(bytearray): posiciones de reina en tablero
 
-	hence fitness val returned will be 28 - <number of clashes>
-
+	Returns:
+		Entero que representa cercania a tablero solucion (max 28)
 	"""
-	global MAX_FITNESS
+	return MAX_FITNESS - ataques_de_reinas(genotipo)
 
-	posiciones_invalidas = ataques_de_reinas(genotipo)
 
-	return MAX_FITNESS - posiciones_invalidas
+def int_to_bstr(entero: int, num_bits: int):
+	"""
+	Convertir entero a cadena binaria de dada longitud
 
-def int_to_bstr(entero: int):
-	return f'{entero:b}'
+	Arguments:
+		entero(int): entero
+		num_bits(int): número de bits
+	
+	Returns:
+		cadena binaria de dada longitud
+	"""
+	return f'{entero:b}'.zfill(num_bits)
+
 
 def generar_nibble_bstr():
-	return int_to_bstr(randrange(0, N_REINAS)).zfill(4)
+	"""
+	Generar una cadena binaria de longitud 4 al azar
 
-def generar_posicion_int(posicion: tuple = None):
-	bstr_fila = generar_nibble_bstr()
-	bstr_columna = generar_nibble_bstr()
+	Returns:
+		cadena binaria de longitud 4
+	"""
+	return int_to_bstr(randrange(0, N_REINAS), 4)
+
+
+def generar_posicion_int():
+	"""
+	Generar entero que representa una posición (fila, columna) de reina
+
+	Arguments:
+		posicion(tuple): posicion de reina
+
+	Returns:
+		Entero que representa una posición de reina
+	"""
+	# Generar 2 cadenas binarias, cada uno de longitud 4 
+	bstr_fila = generar_nibble_bstr() # cadena binaria representa fila
+	bstr_columna = generar_nibble_bstr() # cadena binaria representa columna
 	
 	return int(bstr_fila + bstr_columna, 2)
 
-def generar_posiciones_bytearray(num_posiciones: int):
-	posiciones: list[int] = []
-	p = 1
-
-	while(p <= num_posiciones):
-		posicion_int = generar_posicion_int()
-
-		if posicion_int not in posiciones:
-			posiciones.append(posicion_int)
-			p += 1
-
-	return bytearray(posiciones)
 
 def generar_genotipo():
-	global N_REINAS
+	"""
+	Generar arreglo de bytes que representan posiciones de reina
 
-	posiciones_reina: bytearray = generar_posiciones_bytearray(N_REINAS)
-	
-	return posiciones_reina
+	Returns:
+		Arreglo de bytes
+	"""
+	posiciones_reina: list[int] = []
+	num_posiciones = 0
+
+	while(num_posiciones < N_REINAS): # Generar 8 posiciones
+		# Obtener una posicion (tuple) al azar como entero
+		posicion_int = generar_posicion_int()
+
+		# almacena posicion si posicion generada es diferente
+		if posicion_int not in posiciones_reina: 
+			posiciones_reina.append(posicion_int)
+			num_posiciones += 1
+
+	return bytearray(posiciones_reina)
+
 
 def generar_populacion(num_tableros: int = 100):
 	'''
-	Generar populacion con posibles soluciones
+	Generar populacion de tableros con posibles soluciones
+
+	Arguments:
+		num_tableros(int): Número de tableros en populacion
+
+	Returns:
+		Lista de tableros
 	'''
 	# Lista de objetos Tablero
 	populacion = [Tablero() for _ in range(num_tableros)]
 
 	for tablero in populacion:
 		tablero.set_genotipo(generar_genotipo()) # Secuencia de cromosomas / genotipo / posible solucion
-		tablero.set_fitness(fitness(tablero.genotipo))
+		tablero.set_fitness(fitness(tablero.genotipo)) # cercania a solucion valida
 
 	print("Tamaño de populacion: ", num_tableros)
 
 	return populacion
 
+
 def imprimir_solucion(genotipo: bytearray):
+	"""
+	Imprimir tablero solucion
+
+	Arguments:
+		genotipo(bytearray): posiciones de reina en tablero
+	"""
+	# índice = fila, valor = columna
 	tablero = [0] * N_REINAS
 
-	for byte_posicion in genotipo:
-		fila, columna = expandir_posicion(byte_posicion, "int")	
+	for byte_posicion in genotipo: # Obtener posiciones de reinas
+		fila, columna = byte_to_position(byte_posicion, "int")	
 		tablero[fila] = columna
 		
-	print(tablero, '\n')
+	print(tablero, '\n') # Imprimir lista de tablero
 
-	for fila in range(N_REINAS):
+	for fila in range(N_REINAS): # Imprimir tablero 8x8
 		tablero_fila = ['0'] * N_REINAS
 		columna = tablero[fila]
 		tablero_fila[columna] = '1'
 		
 		print(' '.join(tablero_fila), '\n')
 
+
 def parar_algoritmo(populacion: list, generacion: int):
-	globals()
+	"""
+	Revisar si se encontro un tablero solucion o se alcanzo generacion limite
+	
+	Arguments:
+		populacion(list): lista de tableros
+		generacion(int): generacion de populacion
+
+	Returns:
+		Boolean si se para de buscar solución o no
+	"""
 	parar = False
 	indice_max_fitness: int = None
 
-	# fitness = Maximo de posiciones invalidas (28) - posiciones invalidas en solucion
-	# Maximo de posiciones invalidas en tablero 8x8 es 28
-	# Si fitness == 28, no hubieron reinas en posiciones invalidas
-	# 
+	# fitness = Max ataques de reina posibles (28) - ataques de reina en tablero
+	# Max ataques en tablero 8x8 es 28
+	# Si fitness == 28, no hubieron reinas atacadas
 	valores_fitness = [tablero.fitness for tablero in populacion]	
 
-	try:
+	try: # Revisar si hay tablero solucion
 		indice_max_fitness = valores_fitness.index(MAX_FITNESS)
 
 		tablero_solucion = populacion[indice_max_fitness].genotipo
 		imprimir_solucion(tablero_solucion)
-		parar = True
+		parar = True # parar si solucion encontrada
 
-	except ValueError:
-		if GENERACION_LIMITE == generacion:
+	except ValueError: # Si no se ha encontrado solucion
+		if GENERACION_LIMITE == generacion: # parar si generacion limite
 			parar = True
 			print(f'Valor maximo de fitness fue: {max(valores_fitness)}')	
 
 	return parar
+
+
 
 if __name__ == "__main__":
 	generacion = 0
@@ -297,6 +429,7 @@ if __name__ == "__main__":
 
 	print(f'Ejecutando generacion genetica: {generacion}')
 
+	# Mientras no se encuentre solucion o no llegue a generacion limite
 	while not parar_algoritmo(populacion, generacion):
-		populacion = generar_nueva_generacion(generacion, populacion)
 		generacion += 1 
+		populacion = generar_nueva_generacion(generacion, populacion) # Lista de objetos Tablero
